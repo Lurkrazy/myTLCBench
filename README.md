@@ -160,3 +160,4 @@ python3 tune_autoscheduler.py --network resnet_50 --target "cuda -model=t4"
 python3 tune_autoscheduler.py --network all --target "cuda -model=t4"
 ```
 
+# rebuild-TLCBench
