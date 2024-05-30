@@ -5,12 +5,13 @@ import numpy as np
 
 import tvm
 from tvm import relay, auto_scheduler
-import tvm.contrib.graph_runtime as runtime
+# import tvm.contrib.graph_runtime as runtime
+import tvm.contrib.graph_executor as runtime
 
 from utils import get_network, make_network_key
 
 def benchmark(network, batch_size, dtype, target, log_file, repeat):
-    layout = "NHWC"
+    layout = "NCHW"
     mod, params, input_name, input_shape, output_shape = get_network(
         network, batch_size, dtype, layout
     )
@@ -26,7 +27,7 @@ def benchmark(network, batch_size, dtype, target, log_file, repeat):
             ):
                 lib = relay.build(mod, target=target, params=params)
 
-        ctx = tvm.context(str(target), 0)
+        ctx = tvm.device(target, 0)
         module = runtime.GraphModule(lib["default"](ctx))
 
         # Feed input data
@@ -42,7 +43,7 @@ def benchmark(network, batch_size, dtype, target, log_file, repeat):
                 opt_level=3, config={"relay.backend.use_auto_scheduler": True}
             ):
                 lib = relay.build(mod, target=target, params=params)
-        ctx = tvm.context(str(target), 0)
+        ctx = tvm.device(str(target), 0)
         module = runtime.GraphModule(lib["default"](ctx))
 
         # Feed input data

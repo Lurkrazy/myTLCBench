@@ -31,7 +31,7 @@ def benchmark(network, batch_size, dtype, target, log_prefix, repeat):
         with history_best_context:
             with tvm.transform.PassContext(opt_level=3):
                 lib = relay.build(mod, target=target, params=params)
-        ctx = tvm.context(str(target), 0)
+        ctx = tvm.device(str(target), 0)
         module = runtime.GraphModule(lib["default"](ctx))
 
         # Feed input data
@@ -45,7 +45,7 @@ def benchmark(network, batch_size, dtype, target, log_prefix, repeat):
         with history_best_context:
             with tvm.transform.PassContext(opt_level=3):
                 lib = relay.build(mod, target=target, params=params)
-        ctx = tvm.context(str(target), 0)
+        ctx = tvm.device(str(target), 0)
         module = runtime.GraphModule(lib["default"](ctx))
 
         # Feed input data
