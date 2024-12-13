@@ -6,6 +6,33 @@ from tvm import relay, auto_scheduler
 
 from utils import get_network, make_network_key
 
+def allocate_task_time(tasks, task_weights, total_time, is_round_robin=True):
+    """
+    Allocate time for each task based on its weight or using round-robin method.
+    
+    Parameters:
+    tasks (list): List of tasks
+    task_weights (list): List of weights corresponding to each task
+    total_time (int): Total available time
+    is_round_robin (bool): Flag indicating whether to use round-robin method
+    
+    Returns:
+    list: A list containing each task and its allocated time
+    """
+    if is_round_robin:
+        # Round-robin allocation
+        allocated_time = [total_time // len(tasks)] * len(tasks)
+        remaining_time = total_time % len(tasks)
+        for i in range(remaining_time):
+            allocated_time[i] += 1
+    else:
+        total_weight = sum(task_weights)
+        time_per_weight = total_time / total_weight
+        # Generate the list of allocated times
+        allocated_time = [round(weight * time_per_weight) for weight in task_weights]
+    
+    return allocated_time
+
 def auto_scheduler_tune(network, batch_size, dtype, target, log_file):
     os.makedirs(os.path.dirname(log_file), exist_ok=True)
     if os.path.exists(log_file):
@@ -16,21 +43,37 @@ def auto_scheduler_tune(network, batch_size, dtype, target, log_file):
         network, batch_size, dtype, layout
     )
 
-    tasks, _ = auto_scheduler.extract_tasks(mod["main"], params, target)
+    tasks, task_weights = auto_scheduler.extract_tasks(mod["main"], params, target)
     for idx, task in enumerate(tasks):
         print(
             "========== Task %d  (workload key: %s) =========="
             % (idx, task.workload_key)
         )
         print(task.compute_dag)
-
-    for task in tasks:
-        init_size = 64
-        slide_window_size = 3
-        n_trials = 10
-        max_trials = 1000
-        max_tuning_time = 180
-        tuner = auto_scheduler.dynamic_gradient_search.DynamicGradientSearchTuner(task, log_file, n_trials, init_size, slide_window_size, max_trials, max_tuning_time)
+    
+    total_time = 6*3600  # Total time in seconds
+    allocated_task_times = allocate_task_time(tasks, task_weights, int(total_time), False)
+    # print("Allocated task times:", allocated_task_times)
+    # input("Press Enter to continue...")
+    for task, allocated_time in zip(tasks, allocated_task_times):
+        slide_window_size = 10  # Size of the sliding window used in dynamic gradient search
+        max_tuning_time = allocated_time  # Maximum tuning time in seconds
+        max_trials = 99999  # Maximum number of measurement trials to perform in dynamic gradient search
+        n_start = 5  # Number of start points from the initial sampled population
+        init_size = 64  # Number of samples to generate the initial model
+        predict_score_threshold_ratio=0.6 # Threshold for the predict score
+        measure_threshold_ratio=0.6 # Threshold for the measured throughput
+        
+        # Tuning options, tested with local runner and builder
+        tune_option = auto_scheduler.TuningOptions(
+            runner=auto_scheduler.LocalRunner(timeout=10),
+            builder=auto_scheduler.LocalBuilder(timeout=10),
+        )
+        
+        # initialize tuner
+        tuner = auto_scheduler.dynamic_gradient_search.DynamicGradientSearchTuner(task, log_file, tune_option, n_start, 
+                                                                                  init_size, slide_window_size, max_trials, max_tuning_time,
+                                                                                  predict_score_threshold_ratio, measure_threshold_ratio)
         tuner.dynamic_gradient_search()
 
 if __name__ == "__main__":
